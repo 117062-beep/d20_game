@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>あつまれ！柴犬の島</title>
+    <!-- Tailwind CSSの読み込み -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* デバイス特有のタッチアクションを無効化し、ゲーム向けの操作感を向上 */
+        body {
+            touch-action: manipulation;
+            -webkit-user-select: none;
+            user-select: none;
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+            overflow: hidden;
+            background-color: #f8fafc;
+        }
+        canvas {
+            image-rendering: pixelated;
+        }
+        /* 十字キーの押し込みエフェクト用 */
+        .dpad-btn:active, .dpad-btn.active {
+            background-color: #cbd5e1 !important;
+            transform: scale(0.95);
+        }
+        /* アクションボタンの押し込みエフェクト */
+        .action-btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 1px 0 rgba(0,0,0,0.2) !important;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-center bg-slate-800">
+
+    <div id="game-container" class="relative w-full max-w-lg h-full max-h-[850px] bg-emerald-400 flex flex-col shadow-2xl overflow-hidden">
+        
+        <!-- 上部ヘッダー（ステータス表示） -->
+        <header class="bg-white/90 px-4 py-3 flex justify-between items-center shadow-md z-10 border-b-4 border-emerald-500">
+            <h1 class="text-emerald-800 font-extrabold text-sm sm:text-base flex items-center gap-1">
+                <span>🐾</span> 柴犬の島
+            </h1>
+            <div class="flex gap-2 sm:gap-3 text-xs sm:text-sm font-bold">
+                <div class="bg-stone-100 px-3 py-1.5 rounded-full border-2 border-stone-200 text-stone-700 shadow-inner flex items-center gap-1">
+                    <span>💩</span> うんち: <span id="poop-count" class="text-stone-900 text-base">0</span>
+                </div>
+                <div class="bg-emerald-50 px-3 py-1.5 rounded-full border-2 border-emerald-200 text-emerald-700 shadow-inner flex items-center gap-1">
+                    <span>🧹</span> そうじ: <span id="clean-count" class="text-emerald-600 text-base">0</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- メイン画面（Canvas） -->
+        <main class="flex-1 relative w-full h-full bg-[#82ca46]">
+            <canvas id="gameCanvas" class="absolute inset-0 w-full h-full"></canvas>
+            
+            <!-- 操作説明テキスト（初回のみ薄く表示） -->
+            <div id="tutorial-text" class="absolute top-4 left-0 right-0 text-center pointer-events-none opacity-60">
+                <p class="text-emerald-900 font-bold text-sm bg-white/50 inline-block px-3 py-1 rounded-full backdrop-blur-sm">
+                    十字キーかWASDで歩こう！
+                </p>
+            </div>
+        </main>
+
+        <!-- 下部操作パネル -->
+        <footer class="bg-slate-100 p-3 pb-6 sm:p-4 border-t-4 border-slate-300 z-10 flex flex-col gap-3">
+            
+            <!-- アクションボタン群 -->
+            <div class="flex justify-between gap-2">
+                <button id="btn-poop" class="action-btn flex-1 bg-amber-700 hover:bg-amber-800 text-white font-bold py-2 sm:py-3 rounded-xl shadow-[0_4px_0_#451a03] flex flex-col items-center gap-1 text-xs sm:text-sm transition-transform">
+                    <span class="text-lg">💩</span>きばる
+                </button>
+                <button id="btn-clean" class="action-btn flex-1 bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 sm:py-3 rounded-xl shadow-[0_4px_0_#0284c7] flex flex-col items-center gap-1 text-xs sm:text-sm transition-transform">
+                    <span class="text-lg">🧹</span>ひろう
+                </button>
+                <button id="btn-dressup" class="action-btn flex-1 bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 sm:py-3 rounded-xl shadow-[0_4px_0_#6b21a8] flex flex-col items-center gap-1 text-xs sm:text-sm transition-transform">
+                    <span class="text-lg">👔</span>きせかえ
+                </button>
+                <button id="btn-spawn" class="action-btn flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 sm:py-3 rounded-xl shadow-[0_4px_0_#c2410c] flex flex-col items-center gap-1 text-xs sm:text-sm transition-transform">
+                    <span class="text-lg">🐕</span>なかま
+                </button>
+            </div>
+
+            <!-- 十字キー -->
+            <div class="flex justify-center mt-2">
+                <div class="grid grid-cols-3 grid-rows-3 gap-1.5 w-36 h-36">
+                    <div></div>
+                    <button id="dpad-up" class="dpad-btn bg-slate-200 border-2 border-slate-300 rounded-lg shadow-sm text-slate-600 font-bold text-xl flex justify-center items-center select-none">▲</button>
+                    <div></div>
+                    
+                    <button id="dpad-left" class="dpad-btn bg-slate-200 border-2 border-slate-300 rounded-lg shadow-sm text-slate-600 font-bold text-xl flex justify-center items-center select-none">◄</button>
+                    <div class="flex justify-center items-center text-slate-400 text-[10px] font-bold">MOVE</div>
+                    <button id="dpad-right" class="dpad-btn bg-slate-200 border-2 border-slate-300 rounded-lg shadow-sm text-slate-600 font-bold text-xl flex justify-center items-center select-none">►</button>
+                    
+                    <div></div>
+                    <button id="dpad-down" class="dpad-btn bg-slate-200 border-2 border-slate-300 rounded-lg shadow-sm text-slate-600 font-bold text-xl flex justify-center items-center select-none">▼</button>
+                    <div></div>
+                </div>
+            </div>
+        </footer>
+
+        <!-- きせかえモーダル（初期非表示） -->
+        <div id="dressup-modal" class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-200">
+            <div class="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl border-4 border-purple-300 transform scale-95 transition-transform duration-200" id="modal-content">
+                <div class="bg-purple-100 p-3 border-b-2 border-purple-200 flex justify-between items-center">
+                    <h2 class="font-bold text-purple-800 flex items-center gap-2"><span>👔</span> 柴犬のクローゼット</h2>
+                </div>
+                
+                <div class="p-4 flex flex-col gap-4">
+                    <!-- 毛色の選択 -->
+                    <div>
+                        <p class="text-xs font-bold text-slate-500 mb-2">毛色（しばいぬ）</p>
+                        <div class="grid grid-cols-3 gap-2" id="coat-options">
+                            <!-- JSで生成 -->
+                        </div>
+                    </div>
+
+                    <!-- アクセサリの選択 -->
+                    <div>
+                        <p class="text-xs font-bold text-slate-500 mb-2">アクセサリ</p>
+                        <div class="grid grid-cols-2 gap-2" id="acc-options">
+                            <!-- JSで生成 -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-3 bg-slate-50 border-t-2 border-slate-100">
+                    <button id="btn-close-modal" class="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 rounded-xl shadow-[0_4px_0_#6b21a8] active:translate-y-1 active:shadow-[0_2px_0_#6b21a8] transition-all">
+                        決定する！
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // === キャンバス設定 ===
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // 画面リサイズへの対応
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // === ゲームデータ定義 ===
+        // 毛色のバリエーション
+        const COATS = {
+            red: { id: 'red', name: '赤柴', body: '#c86414', cheek: '#f4e0c8', leg: '#a84c0a' },
+            black: { id: 'black', name: '黒柴', body: '#323232', cheek: '#f4e0c8', leg: '#1a1a1a' },
+            white: { id: 'white', name: '白柴', body: '#f0ece1', cheek: '#ffffff', leg: '#d4d0c5' }
+        };
+
+        // アクセサリのバリエーション
+        const ACCESSORIES = {
+            none: { id: 'none', name: 'なし' },
+            scarf: { id: 'scarf', name: '🍃 唐草バンダナ' },
+            ribbon: { id: 'ribbon', name: '🎀 赤リボン' },
+            crown: { id: 'crown', name: '👑 王冠' }
+        };
+
+        // スコア
+        let stats = { poops: 0, cleaned: 0 };
+
+        // 主人公の柴犬
+        const player = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            speed: 3,
+            direction: 1, // 1: 右向き, -1: 左向き
+            coat: 'red',
+            acc: 'scarf',
+            walkCycle: 0,
+            isMoving: false,
+            squatTimer: 0 // しゃがみ（うんち）中のタイマー
+        };
+
+        // 仲間柴犬の配列
+        const friends = [];
+        // うんちの配列
+        const poops = [];
+        // パーティクル（エフェクト）配列
+        const particles = [];
+
+        // 入力状態
+        const keys = { up: false, down: false, left: false, right: false };
+
+        // === Web Audio API (効果音) ===
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playSound(type) {
+            // ユーザーアクション後にAudioContextを再開（ブラウザの自動再生ポリシー対応）
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            const now = audioCtx.currentTime;
+            
+            if (type === 'poop') {
+                // 低いポコッという音
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(60, now + 0.15);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.15);
+                osc.start(now);
+                osc.stop(now + 0.15);
+            } else if (type === 'clean') {
+                // ピロン！という高い回収音
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.1);
+                osc.start(now);
+                osc.stop(now + 0.1);
+            } else if (type === 'pop') {
+                // UI操作音
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, now);
+                osc.frequency.exponentialRampToValueAtTime(880, now + 0.05);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.05);
+                osc.start(now);
+                osc.stop(now + 0.05);
+            }
+        }
+
+        // === 入力ハンドリング ===
+        // キーボード操作
+        window.addEventListener('keydown', e => {
+            if (e.key === 'ArrowUp' || e.key === 'w') keys.up = true;
+            if (e.key === 'ArrowDown' || e.key === 's') keys.down = true;
+            if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = true;
+            if (e.key === 'ArrowRight' || e.key === 'd') keys.right = true;
+        });
+        window.addEventListener('keyup', e => {
+            if (e.key === 'ArrowUp' || e.key === 'w') keys.up = false;
+            if (e.key === 'ArrowDown' || e.key === 's') keys.down = false;
+            if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = false;
+            if (e.key === 'ArrowRight' || e.key === 'd') keys.right = false;
+        });
+
+        // タッチ操作（十字キー）
+        function setupDpad(btnId, keyName) {
+            const btn = document.getElementById(btnId);
+            const start = (e) => { e.preventDefault(); keys[keyName] = true; btn.classList.add('active'); };
+            const end = (e) => { e.preventDefault(); keys[keyName] = false; btn.classList.remove('active'); };
+            btn.addEventListener('touchstart', start);
+            btn.addEventListener('touchend', end);
+            btn.addEventListener('mousedown', start);
+            btn.addEventListener('mouseup', end);
+            btn.addEventListener('mouseleave', end);
+        }
+        setupDpad('dpad-up', 'up');
+        setupDpad('dpad-down', 'down');
+        setupDpad('dpad-left', 'left');
+        setupDpad('dpad-right', 'right');
+
+        // === アクション機能 ===
+        // うんちをする（きばる）
+        document.getElementById('btn-poop').addEventListener('click', () => {
+            if (player.squatTimer > 0) return; // 連続実行防止
+            
+            player.squatTimer = 30; // 30フレームしゃがむ
+            player.isMoving = false;
+            
+            // 少し遅れてうんちが出る演出
+            setTimeout(() => {
+                poops.push({
+                    x: player.x - (player.direction * 12),
+                    y: player.y + 10,
+                    size: 1 // 表示用アニメーションサイズ
+                });
+                stats.poops++;
+                document.getElementById('poop-count').innerText = stats.poops;
+                playSound('poop');
+                createParticle(player.x, player.y - 20, '💩');
+            }, 200);
+        });
+
+        // うんちを拾う（おそうじ）
+        document.getElementById('btn-clean').addEventListener('click', () => {
+            let foundIdx = -1;
+            let minDist = 60; // 拾える距離
+
+            poops.forEach((p, idx) => {
+                const dx = player.x - p.x;
+                const dy = player.y - p.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                if (dist < minDist) {
+                    minDist = dist;
+                    foundIdx = idx;
+                }
+            });
+
+            if (foundIdx !== -1) {
+                // うんちを回収
+                const p = poops[foundIdx];
+                createParticle(p.x, p.y, '✨');
+                poops.splice(foundIdx, 1);
+                stats.cleaned++;
+                document.getElementById('clean-count').innerText = stats.cleaned;
+                playSound('clean');
+            } else {
+                // 空振り
+                playSound('pop');
+                createParticle(player.x, player.y - 20, '❓');
+            }
+        });
+
+        // 仲間を呼ぶ
+        document.getElementById('btn-spawn').addEventListener('click', () => {
+            const coatKeys = Object.keys(COATS);
+            const accKeys = Object.keys(ACCESSORIES);
+            
+            friends.push({
+                x: Math.random() * (canvas.width - 60) + 30,
+                y: Math.random() * (canvas.height - 60) + 30,
+                speed: 1.5 + Math.random(),
+                direction: Math.random() > 0.5 ? 1 : -1,
+                coat: coatKeys[Math.floor(Math.random() * coatKeys.length)],
+                acc: accKeys[Math.floor(Math.random() * accKeys.length)],
+                walkCycle: 0,
+                isMoving: false,
+                squatTimer: 0,
+                vx: 0, vy: 0,
+                aiTimer: 0
+            });
+            playSound('pop');
+            createParticle(friends[friends.length-1].x, friends[friends.length-1].y - 20, '🐕');
+        });
+
+        const modal = document.getElementById('dressup-modal');
+        const modalContent = document.getElementById('modal-content');
+        
+        function renderModalOptions() {
+            // 毛色ボタン
+            const coatContainer = document.getElementById('coat-options');
+            coatContainer.innerHTML = '';
+            Object.values(COATS).forEach(c => {
+                const btn = document.createElement('button');
+                btn.className = `py-2 rounded-xl border-2 font-bold text-sm transition-all ${player.coat === c.id ? 'bg-purple-100 border-purple-500 text-purple-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`;
+                btn.innerText = c.name;
+                btn.onclick = () => {
+                    player.coat = c.id;
+                    playSound('pop');
+                    renderModalOptions();
+                };
+                coatContainer.appendChild(btn);
+            });
+
+            // アクセサリボタン
+            const accContainer = document.getElementById('acc-options');
+            accContainer.innerHTML = '';
+            Object.values(ACCESSORIES).forEach(a => {
+                const btn = document.createElement('button');
+                btn.className = `py-2 rounded-xl border-2 font-bold text-sm transition-all ${player.acc === a.id ? 'bg-purple-100 border-purple-500 text-purple-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`;
+                btn.innerText = a.name;
+                btn.onclick = () => {
+                    player.acc = a.id;
+                    playSound('pop');
+                    renderModalOptions();
+                };
+                accContainer.appendChild(btn);
+            });
+        }
+
+        document.getElementById('btn-dressup').addEventListener('click', () => {
+            renderModalOptions();
+            modal.classList.remove('opacity-0', 'pointer-events-none');
+            modalContent.classList.remove('scale-95');
+            playSound('pop');
+        });
+
+        document.getElementById('btn-close-modal').addEventListener('click', () => {
+            modal.classList.add('opacity-0', 'pointer-events-none');
+            modalContent.classList.add('scale-95');
+            playSound('pop');
+            createParticle(player.x, player.y - 20, '✨');
+        });
+
+        // エフェクト生成
+        function createParticle(x, y, text) {
+            particles.push({ x, y, text, life: 1.0, vy: -1.5 });
+        }
+
+        // 足を1本描画する関数
+        function drawLeg(x, y, length, angle, color) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 5;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(0, length);
+            ctx.stroke();
+            // 先端（足先）は丸くする
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(0, length, 2.5, 0, Math.PI*2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // 柴犬を描画する関数
+        function drawShiba(dog, isPlayer = false) {
+            const coat = COATS[dog.coat];
+            const acc = dog.acc;
+            
+            ctx.save();
+            ctx.translate(dog.x, dog.y);
+
+            // プレイヤーには足元に影/リングを描く
+            if (isPlayer) {
+                ctx.fillStyle = 'rgba(0,0,0,0.15)';
+                ctx.beginPath();
+                ctx.ellipse(0, 16, 20, 6, 0, 0, Math.PI*2);
+                ctx.fill();
+            }
+
+            // 進行方向に向かって反転（1なら右、-1なら左）
+            ctx.scale(dog.direction, 1);
+
+            // しゃがみ（きばる）時のオフセット計算
+            let squatY = 0;
+            if (dog.squatTimer > 0) {
+                // しゃがみアニメーション（沈み込む）
+                squatY = Math.sin((30 - dog.squatTimer) / 30 * Math.PI) * 4;
+            }
+
+            // 歩行アニメーションの角度（正弦波で前後運動）
+            const swing = dog.isMoving ? Math.sin(dog.walkCycle) * 0.45 : 0;
+
+            // 1. 奥の足（後足と前足）
+            drawLeg(-10, 10 + squatY, 12, -swing, coat.leg); // 奥・後足
+            drawLeg(8, 10 + squatY, 12, swing, coat.leg);   // 奥・前足
+
+            // 2. くるんと巻いた尻尾
+            ctx.strokeStyle = coat.body;
+            ctx.lineWidth = 5.5;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.arc(-15, -4 + squatY, 7, Math.PI * 0.3, Math.PI * 1.5);
+            ctx.stroke();
+
+            // 3. 胴体
+            ctx.fillStyle = coat.body;
+            ctx.beginPath();
+            ctx.ellipse(0, 2 + squatY, 18, 12, 0, 0, Math.PI*2);
+            ctx.fill();
+            // 胴体の下側（白い毛）
+            ctx.fillStyle = coat.cheek;
+            ctx.beginPath();
+            ctx.ellipse(2, 6 + squatY, 14, 7, 0, 0, Math.PI*2);
+            ctx.fill();
+
+            // 4. 手前の足（後足と前足）
+            drawLeg(-6, 12 + squatY, 11, swing, coat.body);   // 手前・後足
+            drawLeg(12, 12 + squatY, 11, -swing, coat.body);  // 手前・前足
+
+            // 5. 頭部
+            const headX = 14;
+            const headY = -8 + squatY;
+            
+            // 頭の輪郭
+            ctx.fillStyle = coat.body;
+            ctx.beginPath();
+            ctx.arc(headX, headY, 11, 0, Math.PI*2);
+            ctx.fill();
+            
+            // 頬の白い毛
+            ctx.fillStyle = coat.cheek;
+            ctx.beginPath();
+            ctx.arc(headX + 3, headY + 3, 6, 0, Math.PI*2);
+            ctx.fill();
+
+            // 耳（ピンと立った三角）
+            ctx.fillStyle = coat.body;
+            ctx.beginPath();
+            ctx.moveTo(headX - 6, headY - 8);
+            ctx.lineTo(headX - 2, headY - 18);
+            ctx.lineTo(headX + 3, headY - 10);
+            ctx.fill();
+
+            // 目と鼻
+            ctx.fillStyle = '#0f172a';
+            ctx.beginPath();
+            ctx.arc(headX + 5, headY - 2, 1.8, 0, Math.PI*2); // 目
+            ctx.arc(headX + 11, headY + 2, 2.2, 0, Math.PI*2); // 鼻
+            ctx.fill();
+
+            // 6. アクセサリの描画
+            if (acc === 'scarf') {
+                // 唐草バンダナ（緑地に白点）
+                ctx.fillStyle = '#16a34a';
+                ctx.beginPath();
+                ctx.arc(headX - 4, headY + 8, 5, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = 'white';
+                ctx.fillRect(headX - 5, headY + 7, 1.5, 1.5);
+                ctx.fillRect(headX - 3, headY + 9, 1.5, 1.5);
+            } else if (acc === 'ribbon') {
+                // 首元の赤リボン
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.arc(headX - 6, headY + 7, 3, 0, Math.PI*2);
+                ctx.arc(headX - 1, headY + 7, 3, 0, Math.PI*2);
+                ctx.fill();
+            } else if (acc === 'crown') {
+                // 王冠
+                ctx.fillStyle = '#eab308';
+                ctx.beginPath();
+                ctx.moveTo(headX - 5, headY - 10);
+                ctx.lineTo(headX - 8, headY - 18);
+                ctx.lineTo(headX - 2, headY - 14);
+                ctx.lineTo(headX + 2, headY - 19);
+                ctx.lineTo(headX + 6, headY - 14);
+                ctx.lineTo(headX + 10, headY - 18);
+                ctx.lineTo(headX + 8, headY - 10);
+                ctx.fill();
+            }
+
+            ctx.restore();
+        }
+
+        // うんちを描画する関数
+        function drawPoop(p) {
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            
+            // 出現アニメーション
+            if (p.size < 12) p.size += 1.5;
+            const scale = p.size / 12;
+            ctx.scale(scale, scale);
+
+            ctx.fillStyle = '#5c3a21';
+            // 下段
+            ctx.beginPath();
+            ctx.ellipse(0, 3, 7, 3, 0, 0, Math.PI*2);
+            ctx.fill();
+            // 中段
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 5, 2.5, 0, 0, Math.PI*2);
+            ctx.fill();
+            // 上段
+            ctx.beginPath();
+            ctx.arc(0, -3, 2.5, 0, Math.PI*2);
+            ctx.fill();
+            
+            ctx.restore();
+        }
+
+        function update() {
+            // プレイヤーの移動と状態更新
+            if (player.squatTimer > 0) {
+                player.squatTimer--;
+                player.isMoving = false;
+            } else {
+                let moved = false;
+                if (keys.up) { player.y -= player.speed; moved = true; }
+                if (keys.down) { player.y += player.speed; moved = true; }
+                if (keys.left) { player.x -= player.speed; player.direction = -1; moved = true; }
+                if (keys.right) { player.x += player.speed; player.direction = 1; moved = true; }
+
+                player.isMoving = moved;
+                if (moved) {
+                    player.walkCycle += 0.25;
+                    // 初回移動時にチュートリアル文字を消す
+                    const tut = document.getElementById('tutorial-text');
+                    if(tut) tut.style.display = 'none';
+                } else {
+                    player.walkCycle = 0;
+                }
+
+                // 画面端の制限（キャンバス内にとどめる）
+                player.x = Math.max(20, Math.min(canvas.width - 20, player.x));
+                player.y = Math.max(20, Math.min(canvas.height - 20, player.y));
+            }
+
+            // 仲間柴犬のAI制御
+            friends.forEach(f => {
+                f.aiTimer--;
+                if (f.aiTimer <= 0) {
+                    // 次のアクションを決定
+                    f.aiTimer = 40 + Math.random() * 80;
+                    if (Math.random() < 0.6) {
+                        // 歩く
+                        f.vx = (Math.random() - 0.5) * f.speed;
+                        f.vy = (Math.random() - 0.5) * f.speed;
+                        if (f.vx !== 0) f.direction = f.vx > 0 ? 1 : -1;
+                        f.isMoving = true;
+                    } else {
+                        // 止まる
+                        f.vx = 0; f.vy = 0;
+                        f.isMoving = false;
+                    }
+                }
+                
+                f.x += f.vx;
+                f.y += f.vy;
+                
+                // 壁で跳ね返る
+                if (f.x < 20 || f.x > canvas.width - 20) { f.vx *= -1; f.direction *= -1; }
+                if (f.y < 20 || f.y > canvas.height - 20) { f.vy *= -1; }
+
+                if (f.isMoving) f.walkCycle += 0.2;
+                else f.walkCycle = 0;
+            });
+
+            // パーティクルの更新
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.y += p.vy;
+                p.life -= 0.03;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+        }
+
+        function draw() {
+            // 背景クリア
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 地面の模様（草）
+            ctx.fillStyle = '#74ba3e';
+            for(let i=10; i<canvas.width; i+=40) {
+                for(let j=10; j<canvas.height; j+=40) {
+                    ctx.fillRect(i, j, 4, 2);
+                }
+            }
+
+            // うんちの描画（Y座標順にソートして奥のものを先に描画する準備）
+            const renderQueue = [];
+            poops.forEach(p => renderQueue.push({ type: 'poop', y: p.y, obj: p }));
+            friends.forEach(f => renderQueue.push({ type: 'dog', y: f.y, obj: f }));
+            renderQueue.push({ type: 'player', y: player.y, obj: player });
+
+            // Y座標でソート（手前のものが前に描画されるように）
+            renderQueue.sort((a, b) => a.y - b.y);
+
+            // 順番に描画
+            renderQueue.forEach(item => {
+                if (item.type === 'poop') drawPoop(item.obj);
+                if (item.type === 'dog') drawShiba(item.obj, false);
+                if (item.type === 'player') drawShiba(item.obj, true);
+            });
+
+            // パーティクル（エフェクト）描画
+            particles.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = p.life;
+                ctx.font = '20px Arial';
+                ctx.fillText(p.text, p.x - 10, p.y);
+                ctx.restore();
+            });
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 初期化して開始
+        window.onload = () => {
+            gameLoop();
+        };
+    </script>
+</body>
+</html>
